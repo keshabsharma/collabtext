@@ -13,7 +13,7 @@ import (
 
 var addr = flag.String("addr", "localhost:7777", "http service address")
 
-func main() {
+func main1() {
 	room := os.Args[1]
 	log.Printf("joining room: %s", room)
 	u := url.URL{Scheme: "ws", Host: *addr, Path: "/ws/" + room}
