@@ -77,7 +77,6 @@ func transformDeleteDelete(op1, op2 Operation) Operation {
 	} else if op1.pos > op2.pos {
 		return op2
 	} else {
-		//return nil
 		op1.pos = 0
 		op1.str = ""
 		return op1
@@ -112,6 +111,38 @@ func applyOp(document string, op Operation) string {
 	}
 }
 
+func getRefOp_L(opList []Operation, op Operation) []Operation {
+	refOps:=make([]Operation, len(opList))
+	var idx int32 = 0
+	for tmpOp:= opList {
+		if tmpOp.rev >= op.rev {
+			refOps[idx] = tmpOp
+			idx++
+		}
+	}
+	return refOps
+}
+
+func getRefOp_LoL(opList [][]Operation, op Operation) []Operation {
+	var refOps []Operation
+	for tmpOps:= opList {
+		for tOp:=tmpOps {
+			if tOp.rev >= op.rev {
+				refOps = append(refOps, tOp)
+			}
+		}
+	}
+	return refOps
+}
+
+func performOp(revlog []Operation, op Operation, document string) string {
+	refOps := getRefOp_L
+	for rOp := refOps {
+		op=transform(op, rOp)
+	}
+	document = applyOp(document, op)
+}
+
 //var serverRev = 0
 func main() {
 	revlog := make([]Operation, 10)
@@ -129,7 +160,7 @@ func main() {
 	revlog[revision] = nextOp
 	revision++
 	fmt.Println(document)
-
+/*
 	Server:
 			 b 1 0
 	a 1 2 -> b 1 3 - stop
@@ -176,7 +207,7 @@ func main() {
 	ab
 	cab
 	cdab
-	
+*/
 	lateOp := getOp("B", 1, "insert", "B", 0)
 	if lateOp.rev < revision {
 		lateOp = transform(lateOp, revlog[revision - 1])
