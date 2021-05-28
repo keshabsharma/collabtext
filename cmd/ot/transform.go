@@ -99,7 +99,7 @@ func transform(op1, op2 Operation) Operation {
 }
 
 func getOp(client string, rev uint64, op string, str string, pos int32) Operation {
-	return Operation{rev, op, pos, str, client, ""}
+	return Operation{rev, op, pos, str, client, "", ""}
 }
 
 func applyOp(document string, op Operation) string {
@@ -108,6 +108,10 @@ func applyOp(document string, op Operation) string {
 	} else {
 		return document[0:op.Position] + document[op.Position+1:]
 	}
+}
+
+func getRefOp(opList []Operation, op Operation) []Operation {
+	return opList[op.Revision:]
 }
 
 func getRefOp_L(opList []Operation, op Operation) []Operation {
@@ -121,6 +125,60 @@ func getRefOp_L(opList []Operation, op Operation) []Operation {
 	}
 	return refOps
 }
+
+/*
+OPlist:
+revision 1 : [op1, op2]
+revision 2: [op3, op4]
+revision 3: [op5, op6,op7]
+revison 14
+
+
+
+ots:
+[o1, o2, o3, o4, o5]
+
+oi (2)
+apply
+
+[o1, o2, o3, o4, o5, oi (2,6)]
+
+oj (3)
+
+
+"eafcdbghello"
+		A             			B                   server
+1. i a 0; ahello			  ahello
+2. i c 1; achello	      	  achello
+3. i d 3; achdello
+4. i e 0; eachdello
+5. i f 2; eafchdello
+						  2. i g 2; acghello      i g 4; eafcghdello
+						  2. i k 1; akcghello     i k
+
+
+A						B 								Server
+1.i a 0; a												1.i a 0; a
+2.i b 1; ab 			1.i c 1; ac 					2.i b 1; ab
+					   		   							3.i c 2; abc
+2.i d 2; abd											4.i d 3; abcd
+
+
+
+For each t in transforms from beginning:
+	if t.requestRevision >= ot.requestRevision:
+		op = transform(op, t)
+or
+
+map[int]requestOts
+
+applied_ot:[..., op1(2,), op2(1,), op3(3,)]
+
+
+A: i a 0; i c 1; i d 3; i e 0; i f 2;
+B:	i g 2 (oi); i k 5 rev6;
+C: acbhello -rev3
+*/
 
 func getRefOp_LoL(opList [][]Operation, op Operation) []Operation {
 	var refOps []Operation

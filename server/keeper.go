@@ -130,14 +130,20 @@ func (r *Keeper) ProcessOperation(ot *t.Operation) (*t.Operation, error) {
 		return nil, err
 	}
 
-	//go r.broadcastTransformation(servers, i, processedOt)
+	// update local server status
+	r.serversLock.Lock()
+	defer r.serversLock.Unlock()
+	r.servers[ot.Document][i].Revision = processedOt.Revision
+
+	// replicate the processed transforms
+	go r.broadcastTransformation(servers, i, processedOt)
 
 	return processedOt, nil
 }
 
-func (r *Keeper) broadcastTransformation(servers []*ServerStatus, serverToExclude int, ot *t.Operation) {
+func (r *Keeper) broadcastTransformation(servers []*ServerStatus, processingServer int, ot *t.Operation) {
 	for i, v := range servers {
-		if i == serverToExclude {
+		if i == processingServer {
 			continue
 		}
 		// only send to synced servers
@@ -150,7 +156,6 @@ func (r *Keeper) broadcastTransformation(servers []*ServerStatus, serverToExclud
 		if *succ {
 			r.serversLock.Lock()
 			defer r.serversLock.Unlock()
-
 			r.servers[ot.Document][i].Revision = ot.Revision
 		}
 	}

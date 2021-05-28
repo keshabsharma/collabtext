@@ -43,7 +43,7 @@ func (client *WsClient) read() {
 		var ot t.Operation
 		err := client.conn.ReadJSON(&ot)
 		if err != nil {
-			// connection end
+			// connection ended
 			return
 		}
 
