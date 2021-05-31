@@ -4,9 +4,11 @@ import (
 	t "collabtext/transform"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"net/rpc"
 	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -34,11 +36,13 @@ type Keeper struct {
 
 	servers      map[string][]*ServerStatus
 	serversAddrs []string
-	serversLock  sync.Mutex
+
+	serversLock sync.Mutex
+	processLock sync.Mutex
 }
 
 type ServerStatus struct {
-	addr     string
+	Addr     string
 	Revision uint64
 }
 
@@ -61,8 +65,6 @@ func (r *Keeper) run() {
 			}
 		case m := <-r.messageQueue:
 			clients := r.clients[m.name]
-
-			log.Println("sending from msg queue for doc ", m.name)
 			for client := range clients {
 				client.otToSend <- m.ot
 			}
@@ -107,10 +109,9 @@ func newKeeper(serversAddrs []string) *Keeper {
 }
 
 func initialize(k *Keeper) {
-
 	servers := make([]*ServerStatus, 0)
 	for _, v := range k.serversAddrs {
-		servers = append(servers, &ServerStatus{v, 0})
+		servers = append(servers, &ServerStatus{v, 1})
 	}
 
 	k.servers["doc1"] = servers
@@ -121,19 +122,19 @@ func (r *Keeper) ProcessOperation(ot *t.Operation) (*t.Operation, error) {
 	if !ok {
 		return nil, fmt.Errorf("document does not exist")
 	}
+	r.processLock.Lock()
+	defer r.processLock.Unlock()
 
 	i := getLatestServerIndex(servers)
 	server := servers[i]
 
-	processedOt, err := r.processTransformation(server.addr, ot)
+	processedOt, err := r.processTransformation(server.Addr, ot)
+
 	if err != nil {
 		return nil, err
 	}
 
-	// update local server status
-	r.serversLock.Lock()
-	defer r.serversLock.Unlock()
-	r.servers[ot.Document][i].Revision = processedOt.Revision
+	r.UpdateServerRevision(ot.Document, server.Addr, processedOt.Revision)
 
 	// replicate the processed transforms
 	go r.broadcastTransformation(servers, i, processedOt)
@@ -146,18 +147,23 @@ func (r *Keeper) broadcastTransformation(servers []*ServerStatus, processingServ
 		if i == processingServer {
 			continue
 		}
-		// only send to synced servers
+
+		// only send to synced servers. separate
 		if ot.Revision-v.Revision > 1 {
 			continue
 		}
 
-		var succ *bool
-		succ, _ = applyTransformation(v.addr, ot)
-		if *succ {
-			r.serversLock.Lock()
-			defer r.serversLock.Unlock()
-			r.servers[ot.Document][i].Revision = ot.Revision
-		}
+		go func(s *ServerStatus) {
+			var rev *uint64
+			rev, err := applyTransformation(s.Addr, ot)
+			log.Println("after broadcast -> rev ", rev, "err: ", err)
+			if err == nil {
+				r.UpdateServerRevision(ot.Document, s.Addr, *rev)
+			}
+
+			r.printInfo()
+
+		}(v)
 	}
 }
 
@@ -168,7 +174,7 @@ func (r *Keeper) processTransformation(addr string, ot *t.Operation) (*t.Operati
 		return nil, e
 	}
 
-	e = conn.Call("Server.ProcessTransformation", ot, ret)
+	e = conn.Call("Server.ProcessTransformation", ot, &ret)
 	if e != nil {
 		conn.Close()
 		return nil, e
@@ -176,19 +182,136 @@ func (r *Keeper) processTransformation(addr string, ot *t.Operation) (*t.Operati
 	return ret, conn.Close()
 }
 
-func applyTransformation(addr string, ot *t.Operation) (*bool, error) {
-	var ret *bool
-	req := make([]*t.Operation, 1)
-	req = append(req, ot)
+func applyTransformation(addr string, ot *t.Operation) (*uint64, error) {
+	req := make([]t.Operation, 1)
+	req = append(req, *ot)
+	return applyTransformations(addr, ot.Document, req)
+}
+
+////// Sync
+
+func (r *Keeper) runSync() {
+	ticker := time.NewTicker(time.Second * 10)
+	defer ticker.Stop()
+	for range ticker.C {
+		r.syncDocuments()
+	}
+
+}
+
+func (r *Keeper) syncDocuments() {
+	for k, d := range r.servers {
+		r.syncDocument(k, d)
+	}
+}
+
+func (r *Keeper) syncDocument(document string, servers []*ServerStatus) {
+	maxRev := uint64(0)
+	for _, v := range servers {
+		if v.Revision >= maxRev {
+			maxRev = v.Revision
+		}
+	}
+	serversToUpdate := make([]*ServerStatus, 0)
+	lowRev := uint64(math.MaxUint64)
+	latestServer := ""
+
+	for _, v := range servers {
+		if v.Revision < maxRev {
+			serversToUpdate = append(serversToUpdate, v)
+			if v.Revision <= lowRev {
+				lowRev = v.Revision
+			}
+		}
+		if v.Revision == maxRev {
+			latestServer = v.Addr
+		}
+	}
+
+	if len(servers) == 0 {
+		return
+	}
+
+	transforms, err := getTransformations(latestServer, document, lowRev)
+	if err != nil {
+		return
+	}
+
+	for _, v := range serversToUpdate {
+		go func(s *ServerStatus) {
+			var rev *uint64
+			rev, e := applyTransformations(s.Addr, document, transforms[s.Revision-lowRev:])
+			if e == nil {
+				r.UpdateServerRevision(document, s.Addr, *rev)
+			} else {
+				log.Println(err)
+			}
+		}(v)
+	}
+}
+
+func (r *Keeper) UpdateServerRevision(document string, addr string, rev uint64) {
+	r.serversLock.Lock()
+	defer r.serversLock.Unlock()
+
+	if servers, ok := r.servers[document]; ok {
+		for i, v := range servers {
+			if v.Addr == addr {
+				r.servers[document][i].Revision = rev
+				return
+			}
+		}
+	}
+
+}
+
+func getTransformations(addr string, document string, fromRevision uint64) ([]t.Operation, error) {
+	var ret TransformsList
+	req := &GetTransforms{document, fromRevision}
+
 	conn, e := rpc.DialHTTP("tcp", addr)
 	if e != nil {
 		return nil, e
 	}
 
-	e = conn.Call("Server.applyTransformations", req, ret)
+	ret.T = nil
+	e = conn.Call("Server.GetTransformations", req, ret)
+	if e != nil {
+		conn.Close()
+		return nil, e
+	}
+	if ret.T == nil {
+		ret.T = make([]t.Operation, 0)
+	}
+	return ret.T, conn.Close()
+}
+
+func applyTransformations(addr string, document string, transforms []t.Operation) (*uint64, error) {
+	var ret *uint64
+	req := new(TransformsList)
+	req.Document = document
+	req.T = append(req.T, transforms...)
+	conn, e := rpc.DialHTTP("tcp", addr)
+	if e != nil {
+		return nil, e
+	}
+
+	e = conn.Call("Server.ApplyTransformations", req, &ret)
 	if e != nil {
 		conn.Close()
 		return nil, e
 	}
 	return ret, conn.Close()
+}
+
+///// DEBUG
+
+func (r *Keeper) printInfo() {
+	log.Println("server statuses")
+	for k, v := range r.servers {
+		fmt.Println("DOCUMENT: ", k)
+		for _, s := range v {
+			fmt.Println("Addr: ", s.Addr, " Revision:", s.Revision)
+		}
+	}
 }

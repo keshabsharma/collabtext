@@ -12,7 +12,8 @@ import (
 
 func main() {
 	name := os.Args[1]
-	addr := os.Args[2]
+	//addr := os.Args[2]
+	addr := "localhost:7777"
 	room := "doc1"
 
 	log.Printf("joining room: %s", room)

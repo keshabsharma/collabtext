@@ -11,12 +11,13 @@ import (
 func RunKeeper(addr string, serversAddrs []string, ready chan bool) error {
 	flag.Parse()
 	log.Println("Running keeper ", addr)
-	room := newKeeper(serversAddrs)
-	initialize(room)
-	go room.run()
+	keeper := newKeeper(serversAddrs)
+	initialize(keeper)
+	go keeper.run()
+	//go keeper.runSync()
 
 	router := mux.NewRouter()
-	router.HandleFunc("/ws/{room}", room.handleWs)
+	router.HandleFunc("/ws/{room}", keeper.handleWs)
 	http.Handle("/", router)
 
 	//ready <- true

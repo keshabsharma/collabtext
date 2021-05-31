@@ -2,7 +2,6 @@ package server
 
 import (
 	t "collabtext/transform"
-	"log"
 
 	"github.com/gorilla/websocket"
 )
@@ -62,8 +61,6 @@ func (client *WsClient) write() {
 		client.conn.Close()
 	}()
 	for ot := range client.otToSend {
-		//err := client.conn.WriteMessage(websocket.TextMessage, msg)
-		log.Println("sending ot to front end ", ot)
 		err := client.conn.WriteJSON(ot)
 		if err != nil {
 			return
