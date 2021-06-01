@@ -163,7 +163,6 @@ func (r *Keeper) ProcessOperation(ot *t.Operation) (*t.Operation, error) {
 
 	i := getLatestServerIndex(servers)
 	server := servers[i]
-	log.Println("processing by ", server.Addr)
 	processedOt, err := r.processTransformation(server.Addr, ot)
 
 	if err != nil {

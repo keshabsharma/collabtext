@@ -14,7 +14,7 @@ func RunKeeper(addr string, serversAddrs []string, ready chan bool) error {
 	keeper := newKeeper(serversAddrs)
 	initialize(keeper)
 	go keeper.run()
-	go keeper.runSync()
+	//go keeper.runSync()
 
 	router := mux.NewRouter()
 	router.HandleFunc("/ws/{room}", keeper.handleWs)

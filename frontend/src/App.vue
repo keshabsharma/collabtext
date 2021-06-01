@@ -93,14 +93,21 @@ export default {
       onEditorChange({ html }) {
         this.$refs.myQuillEditor.quill.once('text-change', (delta, oldDelta, source) =>  {
           if (source != 'api') {
-            var range = this.$refs.myQuillEditor.quill.getSelection();
-            console.log(source)
-            console.log("Delta change!: ", delta)
+            // var range = this.$refs.myQuillEditor.quill.getSelection();
+            // console.log(source)
+            // console.log("Delta change!: ", delta)
+            // console.log("Current Cursor: ", range.index)
             var ops = delta['ops']
             var mostrecent = ops[1]
             if (ops.length == 1) {
               mostrecent = ops[0]
             }
+
+            var retain = 0
+            if (ops[0]["retain"]) {
+              retain = ops[0]["retain"]
+            }
+            
             var val = { 
               "revision": this.revision, 
               "op": "",
@@ -112,19 +119,19 @@ export default {
             }
             if ('delete' in mostrecent) {
               val = { 
-                "revision": this.revision, 
+                "revision": this.revision+1, 
                 "op": "delete",
-                "position": (range.index),
-                "str": mostrecent["delete"],
+                "position": retain,
+                "str": "",
                 "client": this.client,
                 "document": this.room,
                 "error": ""
               }
             } else if ('insert' in mostrecent) {
               val = { 
-                "revision": this.revision, 
+                "revision": this.revision+1, 
                 "op": "insert",
-                "position": (range.index-1),
+                "position": retain,
                 "str": mostrecent["insert"],
                 "client": this.client,
                 "document": this.room,
@@ -132,61 +139,71 @@ export default {
               }
             }
 
-            console.log(val)
+            //console.log(val)
             this.log.push(val)
             if (this.log.length == 1) {
                 var ot = this.log.shift()
                 if (ot !== undefined) {
                   if (this.connection.readyState === WebSocket.CLOSED) {
-                    console.log("can't push right now")
+                    //console.log("can't push right now")
                   } else {
                     this.connection.send(JSON.stringify(ot))
-                    console.log("pushed from log", ot)
+                    //console.log("pushed from log", ot)
                   }
                 }
             }
-            this.revision += 1
-            console.log(this.revision)
+            //this.revision += 1
+            //console.log(this.revision)
           }
         });
         this.content = html
       },
 
       receiveMessage (datas) {
-        console.log("showing message")
+        //console.log("showing message")
         var message = JSON.parse(datas)
         console.log(JSON.parse(datas))
+
+        if (message.error) {
+          console.log(message.error)
+          return;
+
+        }
+
+        if (this.revision < message.revision) {
+          this.revision = message.revision
+        }
         if (message.client != this.client) {
           var protocol = message.op
           var str = message.str
           var index = message.position
+          console.log("right here")
+          console.log(this.$refs)
           switch(protocol) {
             case "delete":
-              this.$refs.myQuillEditor.quill.deleteText(index+str, str, 'api');
+              this.$refs.myQuillEditor.quill.deleteText(index, 1, 'api');
               break;
             case "insert":
-              this.$refs.myQuillEditor.quill.insertText(index, str, 'bold', false, 'api');
+              this.$refs.myQuillEditor.quill.insertText(index, str);
               break;
             default:
-              
           }
-          if (this.revision < message.revision) {
-            this.revision = message.revision
-          }
-
         } else {
-          var ot = this.log.shift()
-          if (ot !== undefined) {
-            if (this.connection.readyState === WebSocket.CLOSED) {
-              console.log("can't push right now")
-            } else {
-              this.connection.send(JSON.stringify(ot))
-              console.log("pushed from log", ot)
-            }
-          }
+          this.shiftLog();
         }
       },
 
+      shiftLog() {
+        var ot = this.log.shift()
+          if (ot !== undefined) {
+            if (this.connection.readyState === WebSocket.CLOSED) {
+              //console.log("can't push right now")
+            } else {
+              this.connection.send(JSON.stringify(ot))
+              //console.log("pushed from log", ot)
+            }
+          }
+      },
 
       resetDocument(data) {
         console.log(data)
@@ -230,14 +247,14 @@ export default {
         this.onLine = navigator.onLine;
         if (this.onLine !== this.showBackOnline) {
           if (this.onLine) {
-            console.log("User just went back online. Reconnecting to server")
+            //console.log("User just went back online. Reconnecting to server")
             this.createConnection()
             if (this.connection.readyState !== WebSocket.CLOSED) {
               this.resetDocument("")
               this.showBackOnline = true
             }
           } else {
-            console.log("User just went offline. Stopping all syncronization")
+            //console.log("User just went offline. Stopping all syncronization")
             this.connection.close()
             this.showBackOnline = false
           }
@@ -271,7 +288,6 @@ export default {
         axios
           .get('http://localhost:7777/document/' + room)
           .then(response => {
-            console.log(response.data)
             this.revision = response.data.revision 
             this.$refs.myQuillEditor.quill.setText(response.data.document)
             this.doc = response.data.document
