@@ -64,9 +64,20 @@ func (s *Server) GetTransformations(request GetTransforms, transforms *Transform
 	return nil
 }
 
+func (s *Server) GetDocument(doc string, res *DocRes) error {
+	document, ok := s.documents[doc]
+	if !ok {
+		return fmt.Errorf("invalid document")
+	}
+
+	r := &DocRes{Document: document.content, Revision: document.revision}
+	*res = *r
+	return nil
+}
+
 func (s *Server) init() {
 	s.documents = make(map[string]*Document)
-	s.documents["doc1"] = newDocument()
+	s.documents["doc1"] = newDocument("doc1")
 }
 
 func RunServer(addr string, ready chan bool) error {

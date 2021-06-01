@@ -2,6 +2,7 @@ package server
 
 import (
 	t "collabtext/transform"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -73,6 +74,39 @@ func (r *Keeper) run() {
 	}
 }
 
+type DocRes struct {
+	Document string `json:"document"`
+	Revision uint64 `json:"revision"`
+}
+
+func (r *Keeper) handleDoc(w http.ResponseWriter, req *http.Request) {
+
+	vars := mux.Vars(req)
+	doc, ok := vars["doc"]
+	if !ok {
+		w.WriteHeader(400)
+		return
+	}
+
+	if _, ok = r.servers[doc]; !ok {
+		w.WriteHeader(400)
+		return
+	}
+
+	// get document from server
+	i := getLatestServerIndex(r.servers[doc])
+	res, err := GetDocument(r.servers[doc][i].Addr, doc)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+
+}
+
 func (r *Keeper) handleWs(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	roomname, ok := vars["room"]
@@ -82,8 +116,10 @@ func (r *Keeper) handleWs(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// upgrade request to websocket connection
+	upgrader.CheckOrigin = func(r *http.Request) bool { return true }
 	c, err := upgrader.Upgrade(w, req, nil)
 	if err != nil {
+		log.Println(err)
 		return
 	}
 	defer c.Close()
@@ -111,7 +147,7 @@ func newKeeper(serversAddrs []string) *Keeper {
 func initialize(k *Keeper) {
 	servers := make([]*ServerStatus, 0)
 	for _, v := range k.serversAddrs {
-		servers = append(servers, &ServerStatus{v, 1})
+		servers = append(servers, &ServerStatus{v, 0})
 	}
 
 	k.servers["doc1"] = servers
@@ -127,7 +163,7 @@ func (r *Keeper) ProcessOperation(ot *t.Operation) (*t.Operation, error) {
 
 	i := getLatestServerIndex(servers)
 	server := servers[i]
-
+	log.Println("processing by ", server.Addr)
 	processedOt, err := r.processTransformation(server.Addr, ot)
 
 	if err != nil {
@@ -137,7 +173,7 @@ func (r *Keeper) ProcessOperation(ot *t.Operation) (*t.Operation, error) {
 	r.UpdateServerRevision(ot.Document, server.Addr, processedOt.Revision)
 
 	// replicate the processed transforms
-	go r.broadcastTransformation(servers, i, processedOt)
+	//go r.broadcastTransformation(servers, i, processedOt)
 
 	return processedOt, nil
 }
@@ -148,7 +184,7 @@ func (r *Keeper) broadcastTransformation(servers []*ServerStatus, processingServ
 			continue
 		}
 
-		// only send to synced servers. separate
+		// only send to synced servers. separate syncing in background
 		if ot.Revision-v.Revision > 1 {
 			continue
 		}
@@ -156,7 +192,6 @@ func (r *Keeper) broadcastTransformation(servers []*ServerStatus, processingServ
 		go func(s *ServerStatus) {
 			var rev *uint64
 			rev, err := applyTransformation(s.Addr, ot)
-			log.Println("after broadcast -> rev ", rev, "err: ", err)
 			if err == nil {
 				r.UpdateServerRevision(ot.Document, s.Addr, *rev)
 			}
@@ -183,7 +218,7 @@ func (r *Keeper) processTransformation(addr string, ot *t.Operation) (*t.Operati
 }
 
 func applyTransformation(addr string, ot *t.Operation) (*uint64, error) {
-	req := make([]t.Operation, 1)
+	req := make([]t.Operation, 0)
 	req = append(req, *ot)
 	return applyTransformations(addr, ot.Document, req)
 }
@@ -206,6 +241,7 @@ func (r *Keeper) syncDocuments() {
 }
 
 func (r *Keeper) syncDocument(document string, servers []*ServerStatus) {
+	log.Println("syncing ", document)
 	maxRev := uint64(0)
 	for _, v := range servers {
 		if v.Revision >= maxRev {
@@ -228,12 +264,15 @@ func (r *Keeper) syncDocument(document string, servers []*ServerStatus) {
 		}
 	}
 
-	if len(servers) == 0 {
+	if len(serversToUpdate) == 0 {
 		return
 	}
 
-	transforms, err := getTransformations(latestServer, document, lowRev)
-	if err != nil {
+	//log.Println("primary server ", latestServer, " from rev ", lowRev+1)
+
+	transforms, err := getTransformations(latestServer, document, lowRev+1)
+
+	if err != nil || len(transforms) == 0 {
 		return
 	}
 
@@ -246,6 +285,7 @@ func (r *Keeper) syncDocument(document string, servers []*ServerStatus) {
 			} else {
 				log.Println(err)
 			}
+			r.printInfo()
 		}(v)
 	}
 }
@@ -275,7 +315,7 @@ func getTransformations(addr string, document string, fromRevision uint64) ([]t.
 	}
 
 	ret.T = nil
-	e = conn.Call("Server.GetTransformations", req, ret)
+	e = conn.Call("Server.GetTransformations", req, &ret)
 	if e != nil {
 		conn.Close()
 		return nil, e
@@ -302,6 +342,23 @@ func applyTransformations(addr string, document string, transforms []t.Operation
 		return nil, e
 	}
 	return ret, conn.Close()
+}
+
+func GetDocument(addr string, document string) (*DocRes, error) {
+	var res *DocRes
+
+	conn, e := rpc.DialHTTP("tcp", addr)
+	if e != nil {
+		return nil, e
+	}
+
+	e = conn.Call("Server.GetDocument", document, &res)
+	if e != nil {
+		conn.Close()
+		return nil, e
+	}
+
+	return res, conn.Close()
 }
 
 ///// DEBUG

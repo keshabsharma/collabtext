@@ -24,6 +24,7 @@ import 'quill/dist/quill.core.css'
 import 'quill/dist/quill.snow.css'
 import 'quill/dist/quill.bubble.css'
 import { quillEditor } from 'vue-quill-editor'
+import axios from 'axios'
 
 export default {
 
@@ -42,11 +43,12 @@ export default {
       connection: null,
       log: [],
       deck: ["file1", "file2", "file3"],
-      room: "1",
+      room: "doc1",
       client: this.makeid(10),
       onLine: navigator.onLine,
-      showBackOnline: true,
-      revision: 0
+      showBackOnline: false,
+      revision: 1,
+      doc: ""
     }
   },
 
@@ -55,8 +57,8 @@ export default {
     console.log('this is current quill instance object', this.editor);
 
     // Start WebSocket Connection
-    this.createConnection()
-
+    this.updateOnlineStatus()
+    // this.createConnection()
     // Make Call to set information
     // this.getFiles()
 
@@ -91,10 +93,14 @@ export default {
       onEditorChange({ html }) {
         this.$refs.myQuillEditor.quill.once('text-change', (delta, oldDelta, source) =>  {
           if (source != 'api') {
+            var range = this.$refs.myQuillEditor.quill.getSelection();
             console.log(source)
             console.log("Delta change!: ", delta)
             var ops = delta['ops']
             var mostrecent = ops[1]
+            if (ops.length == 1) {
+              mostrecent = ops[0]
+            }
             var val = { 
               "revision": this.revision, 
               "op": "",
@@ -108,7 +114,7 @@ export default {
               val = { 
                 "revision": this.revision, 
                 "op": "delete",
-                "position": (ops[0]['retain'] + mostrecent["delete"]),
+                "position": (range.index),
                 "str": mostrecent["delete"],
                 "client": this.client,
                 "document": this.room,
@@ -118,15 +124,27 @@ export default {
               val = { 
                 "revision": this.revision, 
                 "op": "insert",
-                "position": ops[0]['retain'],
+                "position": (range.index-1),
                 "str": mostrecent["insert"],
                 "client": this.client,
                 "document": this.room,
                 "error": ""
               }
             }
+
             console.log(val)
             this.log.push(val)
+            if (this.log.length == 1) {
+                var ot = this.log.shift()
+                if (ot !== undefined) {
+                  if (this.connection.readyState === WebSocket.CLOSED) {
+                    console.log("can't push right now")
+                  } else {
+                    this.connection.send(JSON.stringify(ot))
+                    console.log("pushed from log", ot)
+                  }
+                }
+            }
             this.revision += 1
             console.log(this.revision)
           }
@@ -138,7 +156,7 @@ export default {
         console.log("showing message")
         var message = JSON.parse(datas)
         console.log(JSON.parse(datas))
-        if (message.client == this.client) {
+        if (message.client != this.client) {
           var protocol = message.op
           var str = message.str
           var index = message.position
@@ -162,7 +180,7 @@ export default {
             if (this.connection.readyState === WebSocket.CLOSED) {
               console.log("can't push right now")
             } else {
-              this.connection.send(ot)
+              this.connection.send(JSON.stringify(ot))
               console.log("pushed from log", ot)
             }
           }
@@ -174,7 +192,8 @@ export default {
         console.log(data)
         this.$refs.myQuillEditor.quill.setContents([{ insert: '\n' }]);
         // TODO: Asdd function to pull data from the server.
-        // this.$refs.myQuillEditor.quill.setText(this.get(data)) 
+        this.getData(this.room)
+        this.$refs.myQuillEditor.quill.setText(this.doc)
       },
 
 
@@ -182,8 +201,8 @@ export default {
         var _self = this;
         console.log("Starting connection to WebSocket Server")
         // TODO: Change connection url
-        this.connection = new WebSocket("ws://localhost:7778")
-        // this.connection = new WebSocket("ws://localhost:7777/ws/" + this.room)
+        // this.connection = new WebSocket("ws://localhost:7778")
+        this.connection = new WebSocket("ws://localhost:7777/ws/doc1")
 
         this.connection.onopen = function(event) {
           console.log(event)
@@ -214,7 +233,7 @@ export default {
             console.log("User just went back online. Reconnecting to server")
             this.createConnection()
             if (this.connection.readyState !== WebSocket.CLOSED) {
-              this.resetDocument("test")
+              this.resetDocument("")
               this.showBackOnline = true
             }
           } else {
@@ -240,7 +259,7 @@ export default {
             result.push(characters.charAt(Math.floor(Math.random() * charactersLength)));
         }
         return result.join('');
-      }
+      },
 
       // getFiles () {
         // axios
@@ -248,11 +267,21 @@ export default {
         //   .then(response => (this.deck = response))
       // }
 
-      // getData() {
-        // axios
-        //   .get('URL')
-        //   .then(response => (this.deck = response))
-      // }
+      getData(room) {
+        axios
+          .get('http://localhost:7777/document/' + room)
+          .then(response => {
+            console.log(response.data)
+            this.revision = response.data.revision 
+            this.$refs.myQuillEditor.quill.setText(response.data.document)
+            this.doc = response.data.document
+          })
+          .catch(function (error) {
+            // handle error
+            console.log(error);
+          })
+
+      }
 
   },
 

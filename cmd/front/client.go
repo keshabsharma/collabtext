@@ -41,13 +41,17 @@ func main() {
 		}
 	}()
 
-	ot := t.Operation{1, "insert", 1, "a", name, room, ""}
-	log.Println("writing to socket", ot)
-	err = c.WriteJSON(ot)
-	if err != nil {
-		log.Println(err)
-		return
+	for i := 3; i < 6; i++ {
+		ot := t.Operation{uint64(i), "insert", 0, "a", name, room, ""}
+		log.Println("writing to socket", ot)
+		err = c.WriteJSON(ot)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
 	}
+
 	select {}
 
 }

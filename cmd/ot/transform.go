@@ -5,23 +5,6 @@ import (
 	"fmt"
 )
 
-// type Operation struct {
-// 	// revision
-// 	rev int32
-
-// 	// insert or delete
-// 	op string
-
-// 	// position
-// 	pos int32
-
-// 	// string
-// 	str string
-
-// 	// origin
-// 	client string
-// }
-
 /*
 Tii(Ins[p1,c1], Ins[p2, c2]) {
       if p1 < p2  or (p1 = p2 and u1 > u2) // breaking insert-tie using user identifiers (u1, u2)
@@ -74,10 +57,14 @@ func transformDeleteDelete(op1, op2 Operation) Operation {
 	if op1.Position < op2.Position {
 		return op1
 	} else if op1.Position > op2.Position {
-		return op2
+		op1.Position--
+		return op1
 	} else {
+		//fmt.Println("huh")
 		op1.Position = 0
 		op1.Str = ""
+		op1.Op = "insert"
+		//op1.Op = "id"
 		return op1
 	}
 }
@@ -104,9 +91,17 @@ func getOp(client string, rev uint64, op string, str string, pos int32) Operatio
 
 func applyOp(document string, op Operation) string {
 	if op.Op == "insert" {
-		return document[0:op.Position] + op.Str + document[op.Position:]
+		if op.Position >= int32(len(document)) {
+			return document + op.Str
+		} else {
+			return document[0:op.Position] + op.Str + document[op.Position:]
+		}
 	} else {
-		return document[0:op.Position] + document[op.Position+1:]
+		if op.Position >= int32(len(document)) {
+			return document[0 : op.Position-1]
+		} else {
+			return document[0:op.Position] + document[op.Position+1:]
+		}
 	}
 }
 
@@ -126,60 +121,6 @@ func getRefOp_L(opList []Operation, op Operation) []Operation {
 	return refOps
 }
 
-/*
-OPlist:
-revision 1 : [op1, op2]
-revision 2: [op3, op4]
-revision 3: [op5, op6,op7]
-revison 14
-
-
-
-ots:
-[o1, o2, o3, o4, o5]
-
-oi (2)
-apply
-
-[o1, o2, o3, o4, o5, oi (2,6)]
-
-oj (3)
-
-
-"eafcdbghello"
-		A             			B                   server
-1. i a 0; ahello			  ahello
-2. i c 1; achello	      	  achello
-3. i d 3; achdello
-4. i e 0; eachdello
-5. i f 2; eafchdello
-						  2. i g 2; acghello      i g 4; eafcghdello
-						  2. i k 1; akcghello     i k
-
-
-A						B 								Server
-1.i a 0; a												1.i a 0; a
-2.i b 1; ab 			1.i c 1; ac 					2.i b 1; ab
-					   		   							3.i c 2; abc
-2.i d 2; abd											4.i d 3; abcd
-
-
-
-For each t in transforms from beginning:
-	if t.requestRevision >= ot.requestRevision:
-		op = transform(op, t)
-or
-
-map[int]requestOts
-
-applied_ot:[..., op1(2,), op2(1,), op3(3,)]
-
-
-A: i a 0; i c 1; i d 3; i e 0; i f 2;
-B:	i g 2 (oi); i k 5 rev6;
-C: acbhello -rev3
-*/
-
 func getRefOp_LoL(opList [][]Operation, op Operation) []Operation {
 	var refOps []Operation
 	for _, tmpOps := range opList {
@@ -192,44 +133,14 @@ func getRefOp_LoL(opList [][]Operation, op Operation) []Operation {
 	return refOps
 }
 
-func performOp(revlog []Operation, op Operation, document string) string {
-	refOps := getRefOp_L(revlog, op)
+func performOp(revlog []Operation, op Operation, document string) (string, Operation) {
+	refOps := getRefOp(revlog, op)
 	for _, rOp := range refOps {
 		op = transform(op, rOp)
 	}
 	document = applyOp(document, op)
-	return document
+	return document, op
 }
-
-//var serverRev = 0
-// func main() {
-// 	revlog := make([]Operation, 10)
-// 	var revision uint64 = 1
-// 	document := ""
-// 	lastOp := getOp("A", revision, "insert", "A", 0)
-// 	document = applyOp(document, lastOp)
-// 	//revlog[revision]
-// 	revision++
-// 	fmt.Println(document)
-
-// 	nextOp := getOp("C", revision, "insert", "C", 0)
-// 	nextOp = transform(nextOp, revlog[revision-1])
-// 	document = applyOp(document, nextOp)
-// 	revlog[revision] = nextOp
-// 	revision++
-// 	fmt.Println(document)
-
-// 	lateOp := getOp("B", 1, "insert", "B", 0)
-// 	if lateOp.Revision < revision {
-// 		lateOp = transform(lateOp, revlog[revision-1])
-// 	}
-// 	document = applyOp(document, lateOp)
-// 	revlog[revision] = lateOp
-// 	revision++
-
-// 	fmt.Println(document)
-
-// }
 
 func normalTest_L() {
 	/*
@@ -237,48 +148,84 @@ func normalTest_L() {
 		Document: doc, initial with "hello"
 		Revision: start with 1
 	*/
-	revlog := make([]Operation, 10)
+	revlog := make([]Operation, 0, 0)
 	var idx int32 = 0
 	document := "hello"
 
-	Op1 := getOp("ClientA", 1, "insert", "Aa", 0) // server: hello ; clientA: Aahello ; clientB: hello ; client C: hello
-	document = performOp(revlog, Op1, document)
-	revlog[idx] = Op1
-	idx++
-	fmt.Println(document) // server: Aahello ; clientA: Aahello ; clientB: hello ; client C: hello
+	revlog = append(revlog, getOp("clienta", 0, "insert", "", 0))
 
-	Op2 := getOp("ClientC", 1, "delete", "e", 2) // server: Aahello ; clientA: Aahello ; clientB: hello ; client C: hllo
-	document = performOp(revlog, Op1, document)
-	revlog[idx] = Op2
+	Op1 := getOp("ClientA", 1, "insert", "A", 0) // server: hello ; clientA: Ahello ; clientB: hello ; client C: hello
+	document, op_t := performOp(revlog, Op1, document)
+	//revlog[idx] = op_t
+	revlog = append(revlog, op_t)
 	idx++
-	fmt.Println(document) // server: Aahllo ; clientA: Aahello ; clientB: hello ; client C: Aahllo
+	fmt.Println(document) // server: Ahello ; clientA: Ahello ; clientB: hello ; client C: hello
 
-	Op3 := getOp("ClientA", 2, "insert", "A", 1) // server: Aahllo ; clientA: AaAhello ; clientB: hello ; client C: Aahllo
-	document = performOp(revlog, Op1, document)
-	revlog[idx] = Op3
+	Op2 := getOp("ClientC", 1, "delete", "e", 1) // server: Aahello ; clientA: Aahello ; clientB: hello ; client C: hllo
+	document, op_t = performOp(revlog, Op2, document)
+	//revlog[idx] = op_t
+	revlog = append(revlog, op_t)
 	idx++
-	fmt.Println(document) // server: AaAhllo ; clientA: AaAhllo ; clientB: hello ; client C: Aahllo
+	fmt.Println(document) // server: Ahllo ; clientA: Ahello ; clientB: hello ; client C: Aahllo
 
-	Op4 := getOp("ClientB", 1, "insert", "B", 5) // server: AaAhllo ; clientA: AaAhllo ; clientB: helloB ; client C: Aahllo
-	document = performOp(revlog, Op1, document)
-	revlog[idx] = Op4
+	Op3 := getOp("ClientA", 2, "insert", "B", 1) // server: Ahllo ; clientA: ABhello ; clientB: hello ; client C: Ahllo
+	document, op_t = performOp(revlog, Op3, document)
+	revlog = append(revlog, op_t)
 	idx++
-	fmt.Println(document) // server: AaAhlloB ; clientA: AaAhllo ; clientB: helloB ; client C: Aahllo
+	fmt.Println(document) // server: ABhllo ; clientA: ABhllo ; clientB: hello ; client C: Ahllo
+
+	Op4 := getOp("ClientB", 1, "insert", "C", 5) // server: ABhlloC ; clientA: ABhllo ; clientB: helloC ; client C: Ahllo
+	document, op_t = performOp(revlog, Op4, document)
+	revlog = append(revlog, op_t)
+	idx++
+	fmt.Println(document) // server: ABhlloC ; clientA: ABhllo ; clientB: helloC ; client C: Ahllo
 
 	Op5 := getOp("ClientC", 2, "delete", "l", 3) // server: AaAhlloB ; clientA: AaAhllo ; clientB: helloB ; client C: Aahlo
-	document = performOp(revlog, Op1, document)
-	revlog[idx] = Op5
+	document, op_t = performOp(revlog, Op5, document)
+	revlog = append(revlog, op_t)
 	idx++
 	fmt.Println(document) // server: AaAhloB ; clientA: AaAhllo ; clientB: helloB ; client C: AaAhloB
 
 	Op6 := getOp("ClientB", 2, "delete", "B", 6) // server: AaAhloB ; clientA: AaAhllo ; clientB: hello ; client C: AaAhloB
-	document = performOp(revlog, Op1, document)
-	revlog[idx] = Op6
+	document, op_t = performOp(revlog, Op6, document)
+	revlog = append(revlog, op_t)
 	idx++
 	fmt.Println(document) // server: AaAhlo ; clientA: AaAhllo ; clientB: AaAhlo ; client C: AaAhloB
 
 }
 
+func ddtest() {
+
+	revlog := make([]Operation, 0, 0)
+	var idx int32 = 0
+	document := "a"
+
+	revlog = append(revlog, getOp("clienta", 0, "insert", "", 0))
+
+	Op1 := getOp("ClientA", 1, "delete", "A", 0)
+	document, op_t := performOp(revlog, Op1, document)
+	//revlog[idx] = op_t
+	revlog = append(revlog, op_t)
+	idx++
+	fmt.Println(document)
+
+	Op1 = getOp("ClientA", 2, "insert", "B", 0)
+	document, op_t = performOp(revlog, Op1, document)
+	//revlog[idx] = op_t
+	revlog = append(revlog, op_t)
+	idx++
+	fmt.Println(document)
+
+	Op2 := getOp("Client2", 1, "delete", "A", 0)
+	document, op_t = performOp(revlog, Op2, document)
+	//revlog[idx] = op_t
+	revlog = append(revlog, op_t)
+	idx++
+	fmt.Println(document)
+
+}
+
 func main() {
-	normalTest_L()
+	//normalTest_L()
+	ddtest()
 }

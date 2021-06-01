@@ -2,6 +2,7 @@ package server
 
 import (
 	t "collabtext/transform"
+	"log"
 
 	"github.com/gorilla/websocket"
 )
@@ -41,8 +42,10 @@ func (client *WsClient) read() {
 	for {
 		var ot t.Operation
 		err := client.conn.ReadJSON(&ot)
+		log.Println(ot)
 		if err != nil {
 			// connection ended
+
 			return
 		}
 
