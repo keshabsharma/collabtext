@@ -32,12 +32,8 @@ func main() {
 
 	// run keeper
 	ready := make(chan bool)
-	err := s.RunKeeper(":7777", addresses[:3], ready)
+	err := s.RunKeeper(":40425", addresses[:3], ready)
 	if err != nil {
-		log.Fatalln("keeper did not run")
+		log.Println(err)
 	}
-	if <-ready {
-		log.Fatalln("keeper ready")
-	}
-	log.Println("eee")
 }

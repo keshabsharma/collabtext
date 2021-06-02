@@ -172,7 +172,7 @@ func (r *Keeper) ProcessOperation(ot *t.Operation) (*t.Operation, error) {
 	r.UpdateServerRevision(ot.Document, server.Addr, processedOt.Revision)
 
 	// replicate the processed transforms
-	//go r.broadcastTransformation(servers, i, processedOt)
+	go r.broadcastTransformation(servers, i, processedOt)
 
 	return processedOt, nil
 }
@@ -240,7 +240,6 @@ func (r *Keeper) syncDocuments() {
 }
 
 func (r *Keeper) syncDocument(document string, servers []*ServerStatus) {
-	log.Println("syncing ", document)
 	maxRev := uint64(0)
 	for _, v := range servers {
 		if v.Revision >= maxRev {

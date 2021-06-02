@@ -170,15 +170,13 @@ export default {
 
         }
 
-        if (this.revision < message.revision) {
+        if (this.revision <= message.revision) {
           this.revision = message.revision
         }
         if (message.client != this.client) {
           var protocol = message.op
           var str = message.str
           var index = message.position
-          console.log("right here")
-          console.log(this.$refs)
           switch(protocol) {
             case "delete":
               this.$refs.myQuillEditor.quill.deleteText(index, 1, 'api');
@@ -219,7 +217,7 @@ export default {
         console.log("Starting connection to WebSocket Server")
         // TODO: Change connection url
         // this.connection = new WebSocket("ws://localhost:7778")
-        this.connection = new WebSocket("ws://localhost:7777/ws/doc1")
+        this.connection = new WebSocket("ws://localhost:40425/ws/doc1")
 
         this.connection.onopen = function(event) {
           console.log(event)
@@ -286,7 +284,7 @@ export default {
 
       getData(room) {
         axios
-          .get('http://localhost:7777/document/' + room)
+          .get('http://localhost:40425/document/' + room)
           .then(response => {
             this.revision = response.data.revision 
             this.$refs.myQuillEditor.quill.setText(response.data.document)

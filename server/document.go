@@ -2,7 +2,6 @@ package server
 
 import (
 	t "collabtext/transform"
-	"fmt"
 	"log"
 	"sync"
 )
@@ -33,13 +32,10 @@ func (d *Document) ProcessTransformation(ot *t.Operation) (*t.Operation, error) 
 	d.opLock.Lock()
 	defer d.opLock.Unlock()
 
-	if d.revision+1 != ot.Revision {
-		return nil, fmt.Errorf("invalid revision no")
-	}
-
 	op_t := performOp(d.transforms, *ot)
 	d.applyOp(op_t)
 	d.revision++
+	ot.Revision = d.revision
 	d.transforms = append(d.transforms, op_t)
 
 	log.Println("Server Doc: ", d.content)
@@ -68,12 +64,6 @@ func (d *Document) ApplyTransformations(ops []t.Operation) error {
 }
 
 func (d *Document) GetTransformations(from uint64) []t.Operation {
-	// for i, v := range d.transforms {
-	// 	if v.Revision == from {
-	// 		return d.transforms[i:]
-	// 	}
-	// }
-	// return make([]t.Operation, 0)
 	return d.transforms[from:]
 }
 
