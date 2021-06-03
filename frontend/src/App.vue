@@ -138,8 +138,6 @@ export default {
                 "error": ""
               }
             }
-
-            //console.log(val)
             this.log.push(val)
             if (this.log.length == 1) {
                 var ot = this.log.shift()
@@ -170,8 +168,8 @@ export default {
 
         }
 
-        if (this.revision <= message.revision) {
-          this.revision = message.revision
+        if (this.revision <= message.processedrevision) {
+          this.revision = message.processedrevision
         }
         if (message.client != this.client) {
           var protocol = message.op

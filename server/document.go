@@ -22,7 +22,7 @@ func newDocument(doc string) *Document {
 		transforms: make([]t.Operation, 0),
 		name:       doc,
 	}
-	op := &t.Operation{0, "insert", 0, "", "server", doc, ""}
+	op := &t.Operation{0, 0, "insert", 0, "", "server", doc, ""}
 	d.revision = 0
 	d.transforms = append(d.transforms, *op)
 	return d
@@ -35,11 +35,11 @@ func (d *Document) ProcessTransformation(ot *t.Operation) (*t.Operation, error) 
 	op_t := performOp(d.transforms, *ot)
 	d.applyOp(op_t)
 	d.revision++
-	ot.Revision = d.revision
-	op_t.Revision = d.revision
+	//ot.Revision = d.revision
+	op_t.ProcessedRevision = d.revision
 	d.transforms = append(d.transforms, op_t)
 
-	log.Println("Server Doc: ", d.content)
+	log.Println("Server ", d.revision, " Doc: ", d.content)
 
 	return &op_t, nil
 }
@@ -49,16 +49,16 @@ func (d *Document) ApplyTransformations(ops []t.Operation) error {
 	defer d.opLock.Unlock()
 
 	for _, op := range ops {
-		if op.Revision <= d.revision {
+		if op.ProcessedRevision <= d.revision {
 			continue
 		}
 
 		// making sure all the transforms are in order
-		if d.revision+1 == op.Revision {
+		if d.revision+1 == op.ProcessedRevision {
 			// apply
 			d.applyOp(op)
 			d.transforms = append(d.transforms, op)
-			d.revision = op.Revision
+			d.revision = op.ProcessedRevision
 		}
 	}
 	return nil
@@ -151,6 +151,7 @@ func getRefOp(opList []t.Operation, op t.Operation) []t.Operation {
 
 func performOp(revlog []t.Operation, op t.Operation) t.Operation {
 	refOps := getRefOp(revlog, op)
+	log.Println("refops ", refOps)
 	for _, rOp := range refOps {
 		op = transform(op, rOp)
 	}

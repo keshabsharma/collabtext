@@ -4,7 +4,9 @@ type Operation struct {
 	// revision
 	Revision uint64 `json:"revision"`
 
-	// insert or delete
+	ProcessedRevision uint64 `json:"processedrevision"`
+
+	// operation -> insert or delete
 	Op string `json:"op"`
 
 	// position

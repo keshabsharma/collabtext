@@ -181,7 +181,7 @@ func (r *Keeper) ProcessOperation(ot *t.Operation) (*t.Operation, error) {
 		return nil, err
 	}
 
-	r.UpdateServerRevision(ot.Document, server.Addr, processedOt.Revision)
+	r.UpdateServerRevision(ot.Document, server.Addr, processedOt.ProcessedRevision)
 
 	// replicate the processed transforms
 	go r.broadcastTransformation(servers, i, processedOt)
@@ -196,14 +196,14 @@ func (r *Keeper) broadcastTransformation(servers []*ServerStatus, processingServ
 		}
 
 		// only send to synced servers. separate syncing in background
-		if ot.Revision-v.Revision > 1 {
+		if ot.ProcessedRevision-v.Revision > 1 {
 			continue
 		}
 
 		go func(s *ServerStatus) {
 			_, err := applyTransformation(s.Addr, ot)
 			if err == nil {
-				r.UpdateServerRevision(ot.Document, s.Addr, ot.Revision)
+				r.UpdateServerRevision(ot.Document, s.Addr, ot.ProcessedRevision)
 			}
 		}(v)
 	}
