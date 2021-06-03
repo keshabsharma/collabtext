@@ -46,7 +46,6 @@ func (client *WsClient) read() {
 		if err != nil {
 			log.Println("readjson error ", err)
 			// connection ended
-
 			return
 		}
 
@@ -55,7 +54,6 @@ func (client *WsClient) read() {
 			ot.Error = err.Error()
 			newOt = &ot
 		}
-		log.Println("sending ", *newOt)
 		client.room.messageQueue <- Message{*newOt, client.name}
 	}
 }

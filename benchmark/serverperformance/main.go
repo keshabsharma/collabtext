@@ -7,6 +7,7 @@ import (
 
 	s "collabtext/server"
 	t "collabtext/transform"
+	"collabtext/utils"
 
 	"github.com/gorilla/websocket"
 )
@@ -26,11 +27,12 @@ func main() {
 		times[i] = make([]time.Duration, 0)
 	}
 
-	numServers := 1
+	numServers := 2
 
 	// servers
 	// run servers
-	addresses := GetrandomAddresses(numServers)
+
+	addresses := utils.GetrandomAddresses(numServers)
 	run := func(addr string, ready chan bool) {
 		e := s.RunServer(addr, ready)
 		if e != nil {
@@ -78,7 +80,7 @@ func main() {
 	}
 
 	for i := 0; i < numOps; i++ {
-		time.Sleep(time.Millisecond * 100)
+		time.Sleep(time.Millisecond * 300)
 		c := string(str[i])
 		timers[c] = time.Now()
 		ot := t.Operation{1, "insert", 0, c, "sender", room, ""}
@@ -92,8 +94,7 @@ func main() {
 	time.Sleep(time.Second * 5)
 
 	for i, v := range times {
-		log.Println("rev", i+1)
-		log.Println("clients ", len(v), " avg", avg(v))
+		log.Println("rev", i+1, " avg", avg(v))
 	}
 
 }

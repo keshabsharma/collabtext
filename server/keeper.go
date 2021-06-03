@@ -40,6 +40,9 @@ type Keeper struct {
 
 	serversLock sync.Mutex
 	processLock sync.Mutex
+
+	// benchmark
+	metrics map[string]int
 }
 
 type ServerStatus struct {
@@ -141,13 +144,16 @@ func newKeeper(serversAddrs []string) *Keeper {
 		disconnect:   make(chan *WsClient),
 		servers:      make(map[string][]*ServerStatus),
 		serversAddrs: serversAddrs,
+		metrics:      make(map[string]int),
 	}
 }
 
 func initialize(k *Keeper) {
 	servers := make([]*ServerStatus, 0)
 	for _, v := range k.serversAddrs {
+		// future work?? get the server version to handle keeper failure
 		servers = append(servers, &ServerStatus{v, 0})
+		k.metrics[v] = 0
 	}
 
 	k.servers["doc1"] = servers
@@ -163,7 +169,13 @@ func (r *Keeper) ProcessOperation(ot *t.Operation) (*t.Operation, error) {
 
 	i := getLatestServerIndex(servers)
 	server := servers[i]
+
+	r.metrics[server.Addr]++
 	processedOt, err := r.processTransformation(server.Addr, ot)
+
+	// if processedOt.Revision == 62 {
+	// 	log.Println(r.metrics)
+	// }
 
 	if err != nil {
 		return nil, err
@@ -189,14 +201,10 @@ func (r *Keeper) broadcastTransformation(servers []*ServerStatus, processingServ
 		}
 
 		go func(s *ServerStatus) {
-			var rev *uint64
-			rev, err := applyTransformation(s.Addr, ot)
+			_, err := applyTransformation(s.Addr, ot)
 			if err == nil {
-				r.UpdateServerRevision(ot.Document, s.Addr, *rev)
+				r.UpdateServerRevision(ot.Document, s.Addr, ot.Revision)
 			}
-
-			r.printInfo()
-
 		}(v)
 	}
 }
@@ -266,8 +274,6 @@ func (r *Keeper) syncDocument(document string, servers []*ServerStatus) {
 		return
 	}
 
-	//log.Println("primary server ", latestServer, " from rev ", lowRev+1)
-
 	transforms, err := getTransformations(latestServer, document, lowRev+1)
 
 	if err != nil || len(transforms) == 0 {
@@ -283,7 +289,6 @@ func (r *Keeper) syncDocument(document string, servers []*ServerStatus) {
 			} else {
 				log.Println(err)
 			}
-			r.printInfo()
 		}(v)
 	}
 }
@@ -294,7 +299,7 @@ func (r *Keeper) UpdateServerRevision(document string, addr string, rev uint64) 
 
 	if servers, ok := r.servers[document]; ok {
 		for i, v := range servers {
-			if v.Addr == addr {
+			if v.Addr == addr && r.servers[document][i].Revision < rev {
 				r.servers[document][i].Revision = rev
 				return
 			}

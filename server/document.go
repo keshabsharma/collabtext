@@ -17,7 +17,7 @@ type Document struct {
 
 func newDocument(doc string) *Document {
 	d := &Document{
-		content:    "test",
+		content:    "",
 		revision:   0,
 		transforms: make([]t.Operation, 0),
 		name:       doc,
@@ -36,11 +36,12 @@ func (d *Document) ProcessTransformation(ot *t.Operation) (*t.Operation, error) 
 	d.applyOp(op_t)
 	d.revision++
 	ot.Revision = d.revision
+	op_t.Revision = d.revision
 	d.transforms = append(d.transforms, op_t)
 
 	log.Println("Server Doc: ", d.content)
 
-	return ot, nil
+	return &op_t, nil
 }
 
 func (d *Document) ApplyTransformations(ops []t.Operation) error {
@@ -103,7 +104,6 @@ func transformDeleteDelete(op1, op2 t.Operation) t.Operation {
 		op1.Position--
 		return op1
 	} else {
-		//fmt.Println("huh")
 		op1.Position = 0
 		op1.Str = ""
 		op1.Op = "insert"
