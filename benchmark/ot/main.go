@@ -78,11 +78,19 @@ func simpleOtTest() bool {
 		log.Fatal(err)
 	}
 
+	docStr := "bcde"
+	clientRev := make([]int32, numClients，1)
 	for i := 0; i < numOps; i++ {
 		time.Sleep(time.Millisecond * 300)
 		ch := string(str[i])
 		c := rand.Intn(numClients)
-		ot := t.Operation{1, "insert", 0, ch, "sender" + string(rune(c)), room, ""}
+		ot := t.Operation{clientRev[c], "insert", i, ch, "sender" + string(rune(c)), room, ""}
+		if i==5 {
+			ot.Op = "delete"
+			ot.Position = 0
+			ot.Str = "a"
+		}
+		//docStr = ch + docStr
 		err = sender.WriteJSON(ot)
 		if err != nil {
 			log.Println(err)
@@ -91,8 +99,13 @@ func simpleOtTest() bool {
 	}
 
 	// check documents here
+	curDoc := getDocument()
+	fmt.Print("ground truth is "+docStr)
+	fmt.Print("server's doc is "+curDoc)
+	fmt.Print("Compare result in Simple OT Test is ")
+	fmt.Println(docStr==curDoc)
 
-	return false
+	return docStr==curDoc
 }
 
 type Response struct {
@@ -150,5 +163,6 @@ func runServer() {
 }
 
 func main() {
+	simpleOtTest()
 
 }
